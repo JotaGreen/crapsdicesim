@@ -27,8 +27,7 @@
         }
 
         .die {
-            /* The die face itself acts as the body. 
-               The red background is sized to encompass the unicode pip character perfectly. */
+            //The die face itself acts as the body. 
             background-color: #ff0000;
             color: white;
             width: 85px;
@@ -38,9 +37,11 @@
             justify-content: center;
             font-size: 160px; /* Sized so unicode char fills the block */
             line-height: 1;
-            border-radius: 12px; /* Slight rounding for die corners */
-            box-shadow: 0 8px 15px rgba(0,0,0,0.4);
             user-select: none;
+        }
+        //The span is used to align the unicode glyph and the background
+        .die span {
+            transform: translateY(-10px);
         }
 
         #roll-button {
@@ -74,8 +75,8 @@
 <body>
 
     <div class="dice-area">
-        <div id="die1" class="die">⚀</div>
-        <div id="die2" class="die">⚀</div>
+        <div id="die1" class="die"><span>⚀</span></div>
+        <div id="die2" class="die"><span>⚀</span></div>
     </div>
 
     <button id="roll-button" onclick="startRollSequence()">ROLL</button>
@@ -134,8 +135,8 @@
          */
         function startRollSequence() {
             const btn = document.getElementById('roll-button');
-            const d1El = document.getElementById('die1');
-            const d2El = document.getElementById('die2');
+            const d1El = document.getElementById('die1').querySelector('span');
+            const d2El = document.getElementById('die2').querySelector('span');
             
             const outcome = getRollOutcome();
             
