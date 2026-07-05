@@ -3,12 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dice Simulator</title>
+    <title>Craps Dice Simulator</title>
     <style>
-        /* CSS: Minimalist Casino Interface */
         body {
-            /* Classic casino green felt */
-            background-color: #1a5e20; 
             margin: 0;
             padding: 0;
             display: flex;
@@ -16,163 +13,215 @@
             align-items: center;
             justify-content: center;
             height: 100vh;
-            font-family: sans-serif;
+            background-color: #1a1a1a;
+            font-family: Arial, sans-serif;
+        }
+
+        #dice-box {
+            width: 800px;
+            height: 500px;
+            background-color: #0f6125; /* Casino felt green */
+            border: 15px solid #3d2314; /* Wooden border */
+            border-radius: 10px;
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.5), 0 10px 20px rgba(0,0,0,0.5);
             overflow: hidden;
+            position: relative;
         }
 
-        .dice-area {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 50px;
-        }
-
-        .die {
-            /* The die face itself acts as the body. 
-               The red background is sized to encompass the unicode pip character perfectly. */
-            background-color: #ff0000;
+        #roll-btn {
+            margin-top: 20px;
+            padding: 15px 40px;
+            font-size: 24px;
+            font-weight: bold;
             color: white;
-            width: 85px;
-            height: 85px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 160px; /* Sized so unicode char fills the block */
-            line-height: 1;
-            user-select: none;
-        }
-        .die span {
-            transform: translateY(-10px);
-        }
-
-        #roll-button {
-            padding: 12px 50px;
-            font-size: 1.5rem;
-            font-weight: 900;
-            letter-spacing: 2px;
-            color: #1a5e20;
-            background-color: #ffca28;
+            background-color: #cc0000;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            box-shadow: 0 5px 0 #b28900;
-            transition: all 0.05s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            transition: transform 0.1s, background-color 0.2s;
         }
 
-        #roll-button:active {
-            transform: translateY(3px);
-            box-shadow: 0 2px 0 #b28900;
+        #roll-btn:active {
+            transform: translateY(2px);
+            background-color: #a30000;
         }
 
-        #roll-button:disabled {
-            background-color: #757575;
-            box-shadow: none;
-            color: #424242;
-            cursor: not-allowed;
-            transform: translateY(3px);
+        #roll-btn:hover {
+            background-color: #ff1a1a;
         }
     </style>
 </head>
 <body>
 
-    <div class="dice-area">
-        <div id="die1" class="die"><span>⚀</span></div>
-        <div id="die2" class="die"><span>⚀</span></div>
-    </div>
+    <div id="dice-box"></div>
+    <button id="roll-btn">Roll</button>
 
-    <button id="roll-button" onclick="startRollSequence()">ROLL</button>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
 
     <script>
-        /**
-         * APPLICATION LOGIC
-         * A biased dice simulator where '8' has a custom probability.
-         */
+        // --- Setup Scene, Camera, and Renderer ---
+        const container = document.getElementById('dice-box');
+        const scene = new THREE.Scene();
+        
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(0, 15, 15);
+        camera.lookAt(0, 0, 0);
 
-        let sessionBias8 = 0;
-        const diceGlyphs = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
-        const eightCombinations = [[2, 6], [3, 5], [4, 4], [5, 3], [6, 2]];
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
 
-        // 1. Initialize the session bias on page load
-        function initSession() {
-            // Randomly defined between 0.1389 and 0.5 (inclusive)
-            sessionBias8 = Math.random() * (0.5 - 0.1389) + 0.1389;
-            
-            console.log("--- New Session ---");
-            console.log(`Bias for result '8' set to: ${(sessionBias8 * 100).toFixed(2)}%`);
+        // --- Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 20, 5);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        scene.add(dirLight);
+
+        // --- Setup Physics World (Cannon.js) ---
+        const world = new CANNON.World();
+        world.gravity.set(0, -30, 0); // Heavy gravity for snappy dice rolling
+        world.broadphase = new CANNON.NaiveBroadphase();
+        world.solver.iterations = 20;
+
+        // Physics Materials
+        const defaultMaterial = new CANNON.Material();
+        const diceMaterial = new CANNON.Material();
+        const contactMaterial = new CANNON.ContactMaterial(defaultMaterial, diceMaterial, {
+            friction: 0.3,
+            restitution: 0.5 // Bounciness
+        });
+        world.addContactMaterial(contactMaterial);
+
+        // --- Create Invisible Physical Boundaries (Walls & Floor) ---
+        function createWall(x, y, z, rotationX, rotationY) {
+            const shape = new CANNON.Plane();
+            const body = new CANNON.Body({ mass: 0, material: defaultMaterial });
+            body.addShape(shape);
+            body.position.set(x, y, z);
+            body.quaternion.setFromEuler(rotationX, rotationY, 0);
+            world.addBody(body);
         }
 
-        /**
-         * Step-by-step logic defined in requirements:
-         * 1. Check if result will be 8 based on bias.
-         * 2. If yes, pick one of the 5 ways to make 8.
-         * 3. If no, roll until it's NOT an 8.
-         */
-        function getRollOutcome() {
-            const rollSeed = Math.random();
+        // Floor
+        createWall(0, -0.5, 0, -Math.PI / 2, 0);
+        // 4 Walls to keep dice inside the box
+        const boxWidth = 9;
+        const boxDepth = 5;
+        createWall(0, 0, -boxDepth, 0, 0);           // Back
+        createWall(0, 0, boxDepth, 0, -Math.PI);     // Front
+        createWall(-boxWidth, 0, 0, 0, Math.PI / 2); // Left
+        createWall(boxWidth, 0, 0, 0, -Math.PI / 2); // Right
+
+        // --- Generate Dice Textures Dynamically ---
+        function createDiceTexture(number) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
             
-            if (rollSeed <= sessionBias8) {
-                console.log(`[LOGIC] Bias triggered (${rollSeed.toFixed(4)} <= ${sessionBias8.toFixed(4)}). Result: 8`);
-                const combo = eightCombinations[Math.floor(Math.random() * eightCombinations.length)];
-                return combo;
-            } else {
-                console.log(`[LOGIC] Standard roll triggered. Avoiding 8.`);
-                let d1, d2;
-                let rerolls = 0;
+            // Red Background
+            ctx.fillStyle = '#cc0000';
+            ctx.fillRect(0, 0, 256, 256);
+            
+            // White Pips
+            ctx.fillStyle = '#ffffff';
+            const drawPip = (x, y) => {
+                ctx.beginPath();
+                ctx.arc(x, y, 22, 0, Math.PI * 2);
+                ctx.fill();
+            };
+
+            const center = 128;
+            const offset = 65;
+
+            if (number === 1) { drawPip(center, center); }
+            else if (number === 2) { drawPip(center - offset, center - offset); drawPip(center + offset, center + offset); }
+            else if (number === 3) { drawPip(center - offset, center - offset); drawPip(center, center); drawPip(center + offset, center + offset); }
+            else if (number === 4) { drawPip(center - offset, center - offset); drawPip(center + offset, center + offset); drawPip(center - offset, center + offset); drawPip(center + offset, center - offset); }
+            else if (number === 5) { drawPip(center - offset, center - offset); drawPip(center + offset, center + offset); drawPip(center - offset, center + offset); drawPip(center + offset, center - offset); drawPip(center, center); }
+            else if (number === 6) { drawPip(center - offset, center - offset); drawPip(center + offset, center + offset); drawPip(center - offset, center + offset); drawPip(center + offset, center - offset); drawPip(center - offset, center); drawPip(center + offset, center); }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.2 });
+        }
+
+        const materials = [
+            createDiceTexture(1), createDiceTexture(6), 
+            createDiceTexture(2), createDiceTexture(5), 
+            createDiceTexture(3), createDiceTexture(4)
+        ];
+
+        // --- Create Dice ---
+        const diceSize = 1.2;
+        const geometry = new THREE.BoxGeometry(diceSize, diceSize, diceSize);
+        const diceMeshes = [];
+        const diceBodies = [];
+
+        function createDie() {
+            // Three.js Mesh
+            const mesh = new THREE.Mesh(geometry, materials);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+            diceMeshes.push(mesh);
+
+            // Cannon.js Body
+            const shape = new CANNON.Box(new CANNON.Vec3(diceSize/2, diceSize/2, diceSize/2));
+            const body = new CANNON.Body({ mass: 1, material: diceMaterial });
+            body.addShape(shape);
+            world.addBody(body);
+            diceBodies.push(body);
+        }
+
+        createDie(); // Die 1
+        createDie(); // Die 2
+
+        // --- Rolling Logic ---
+        function rollDice() {
+            diceBodies.forEach((body, index) => {
+                // Reset position slightly apart and high up
+                body.position.set((index * 2) - 1, 5 + (Math.random() * 2), 2);
                 
-                // Roll until we get something that isn't an 8
-                do {
-                    d1 = Math.floor(Math.random() * 6) + 1;
-                    d2 = Math.floor(Math.random() * 6) + 1;
-                    if (d1 + d2 === 8) rerolls++;
-                } while (d1 + d2 === 8);
+                // Randomize starting rotation
+                body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
                 
-                console.log(`[LOGIC] Final outcome [${d1}, ${d2}] (Sum: ${d1+d2}). Avoided 8 after ${rerolls} internal re-rolls.`);
-                return [d1, d2];
+                // Apply chaotic force and spin
+                body.velocity.set((Math.random() - 0.5) * 10, -5, -15 - (Math.random() * 10)); // Throw towards the "back wall"
+                body.angularVelocity.set((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20);
+            });
+        }
+
+        document.getElementById('roll-btn').addEventListener('click', rollDice);
+
+        // Initial roll on load
+        rollDice();
+
+        // --- Animation Loop ---
+        const timeStep = 1 / 60;
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Step the physics world
+            world.step(timeStep);
+
+            // Sync visual meshes with physics bodies
+            for (let i = 0; i < diceMeshes.length; i++) {
+                diceMeshes[i].position.copy(diceBodies[i].position);
+                diceMeshes[i].quaternion.copy(diceBodies[i].quaternion);
             }
+
+            renderer.render(scene, camera);
         }
 
-        /**
-         * Handles the UI animation and triggers logic
-         */
-        function startRollSequence() {
-            const btn = document.getElementById('roll-button');
-            const d1El = document.getElementById('die1').querySelector('span');
-            const d2El = document.getElementById('die2').querySelector('span');
-            
-            const outcome = getRollOutcome();
-            
-            // UI state
-            btn.disabled = true;
-            const duration = 1500; // 1.5 seconds as requested
-            const startTime = Date.now();
-
-            console.log("--- Roll Started (1.5s Animation) ---");
-
-            const animTimer = setInterval(() => {
-                const now = Date.now();
-                
-                // Rapidly cycle random faces
-                const temp1 = Math.floor(Math.random() * 6) + 1;
-                const temp2 = Math.floor(Math.random() * 6) + 1;
-                
-                d1El.innerText = diceGlyphs[temp1];
-                d2El.innerText = diceGlyphs[temp2];
-
-                // Check for animation end
-                if (now - startTime >= duration) {
-                    clearInterval(animTimer);
-                    
-                    // Set result
-                    d1El.innerText = diceGlyphs[outcome[0]];
-                    d2El.innerText = diceGlyphs[outcome[1]];
-                    
-                    btn.disabled = false;
-                    console.log("--- Roll Finalized ---");
-                }
-            }, 70); // Interval speed
-        }
-
-        // Initialize session parameters
-        window.onload = initSession;
+        animate();
     </script>
 </body>
 </html>
