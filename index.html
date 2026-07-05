@@ -18,8 +18,11 @@
         }
 
         #dice-box {
-            width: 800px;
-            height: 500px;
+            width: 90vw;
+            max-width: 800px;
+            height: 60vw;
+            max-height: 500px;
+            box-sizing: border-box;
             background-color: #0f6125; /* Casino felt green */
             border: 15px solid #3d2314; /* Wooden border */
             border-radius: 10px;
@@ -66,6 +69,7 @@
         const scene = new THREE.Scene();
         
         const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        // Adjusted camera position to be more top-down (higher Y, closer Z)
         camera.position.set(0, 20, 7);
         camera.lookAt(0, 0, 0);
 
@@ -73,6 +77,13 @@
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.shadowMap.enabled = true;
         container.appendChild(renderer.domElement);
+
+        // Handle window resize for responsiveness
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
 
         // --- Lighting ---
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
