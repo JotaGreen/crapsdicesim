@@ -79,10 +79,10 @@
         container.appendChild(renderer.domElement);
 
         // --- Lighting ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        const ambientLight = new THREE.AmbientLight(0xffffff,0.6);
         scene.add(ambientLight);
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        const dirLight = new THREE.DirectionalLight(0xffffff,0.8);
         dirLight.position.set(5, 20, 5);
         dirLight.castShadow = true;
         dirLight.shadow.mapSize.width = 1024;
@@ -229,14 +229,20 @@
             diceBodies.push(body);
         }
 
-        createDie(); // Die 1
-        createDie(); // Die 2
-
         // --- Rolling Logic ---
+        let diceCreated = false;
+
         function rollDice() {
+            // Create the dice only on the first roll
+            if (!diceCreated) {
+                createDie(); // Die 1
+                createDie(); // Die 2
+                diceCreated = true;
+            }
+
             diceBodies.forEach((body, index) => {
-                // Reset position slightly apart and high up
-                body.position.set((index * 2) - 1, 5 + (Math.random() * 2), 2);
+                // Reset position slightly apart, high up, and closer to the bottom of the screen (increased Z axis)
+                body.position.set((index * 2) - 1, 5 + (Math.random() * 2), 4.5);
                 
                 // Randomize starting rotation
                 body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
@@ -248,9 +254,6 @@
         }
 
         document.getElementById('roll-btn').addEventListener('click', rollDice);
-
-        // Initial roll on load
-        rollDice();
 
         // --- Animation Loop ---
         const timeStep = 1 / 60;
