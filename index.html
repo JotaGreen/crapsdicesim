@@ -21,7 +21,7 @@
             width: 90vw;
             max-width: 800px;
             height: 60vw;
-            min-height: 65vh;
+            min-height: 50vh;
             max-height: 500px;
             box-sizing: border-box;
             background-color: #0f6125; /* Casino felt green */
@@ -113,6 +113,10 @@
             wallBodies.forEach(body => world.removeBody(body));
             wallBodies = [];
 
+            // Ensure camera matrices are up-to-date for accurate raycasting on initial load
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+
             // Raycaster to find the visible edges of the floor
             const raycaster = new THREE.Raycaster();
             const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -120,8 +124,8 @@
             function getEdgeIntersection(x, y) {
                 raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
                 const target = new THREE.Vector3();
-                raycaster.ray.intersectPlane(floorPlane, target);
-                return target;
+                // intersectPlane returns the target vector if it hits, or null if it misses
+                return raycaster.ray.intersectPlane(floorPlane, target);
             }
 
             // Get exact coordinates where the screen edges hit the floor (Y=0)
