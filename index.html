@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -70,7 +71,6 @@
         const scene = new THREE.Scene();
         
         const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-        // Adjusted camera position to be more top-down (higher Y, closer Z)
         camera.position.set(0, 20, 7);
         camera.lookAt(0, 0, 0);
 
@@ -78,13 +78,6 @@
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.shadowMap.enabled = true;
         container.appendChild(renderer.domElement);
-
-        // Handle window resize for responsiveness
-        window.addEventListener('resize', () => {
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-        });
 
         // --- Lighting ---
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -112,25 +105,66 @@
         });
         world.addContactMaterial(contactMaterial);
 
-        // --- Create Invisible Physical Boundaries (Walls & Floor) ---
-        function createWall(x, y, z, rotationX, rotationY) {
-            const shape = new CANNON.Plane();
-            const body = new CANNON.Body({ mass: 0, material: defaultMaterial });
-            body.addShape(shape);
-            body.position.set(x, y, z);
-            body.quaternion.setFromEuler(rotationX, rotationY, 0);
-            world.addBody(body);
+        // --- Dynamic Physical Boundaries ---
+        let wallBodies = [];
+        const diceSize = 1.2;
+
+        function updatePhysicsBoundaries() {
+            // Remove existing walls if they exist
+            wallBodies.forEach(body => world.removeBody(body));
+            wallBodies = [];
+
+            // Raycaster to find the visible edges of the floor
+            const raycaster = new THREE.Raycaster();
+            const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+            function getEdgeIntersection(x, y) {
+                raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+                const target = new THREE.Vector3();
+                raycaster.ray.intersectPlane(floorPlane, target);
+                return target;
+            }
+
+            // Get exact coordinates where the screen edges hit the floor (Y=0)
+            const rightEdge = getEdgeIntersection(1, 0);
+            const topEdge = getEdgeIntersection(0, 1);
+            const bottomEdge = getEdgeIntersection(0, -1);
+
+            // Calculate boundaries, applying a margin so dice don't clip through the visual edges
+            const margin = diceSize / 2;
+            const boxWidth = rightEdge ? Math.abs(rightEdge.x) - margin : 9;
+            const boxDepthBack = topEdge ? Math.abs(topEdge.z) - margin : 5;
+            const boxDepthFront = bottomEdge ? Math.abs(bottomEdge.z) - margin : 5;
+
+            function addWall(x, y, z, rotationX, rotationY) {
+                const shape = new CANNON.Plane();
+                const body = new CANNON.Body({ mass: 0, material: defaultMaterial });
+                body.addShape(shape);
+                body.position.set(x, y, z);
+                body.quaternion.setFromEuler(rotationX, rotationY, 0);
+                world.addBody(body);
+                wallBodies.push(body);
+            }
+
+            // Floor
+            addWall(0, -0.5, 0, -Math.PI / 2, 0);
+            // 4 Walls dynamically sized to perfectly fit the camera view
+            addWall(0, 0, -boxDepthBack, 0, 0);           // Back
+            addWall(0, 0, boxDepthFront, 0, -Math.PI);    // Front
+            addWall(-boxWidth, 0, 0, 0, Math.PI / 2);     // Left
+            addWall(boxWidth, 0, 0, 0, -Math.PI / 2);     // Right
         }
 
-        // Floor
-        createWall(0, -0.5, 0, -Math.PI / 2, 0);
-        // 4 Walls to keep dice inside the box
-        const boxWidth = 9;
-        const boxDepth = 5;
-        createWall(0, 0, -boxDepth, 0, 0);           // Back
-        createWall(0, 0, boxDepth, 0, -Math.PI);     // Front
-        createWall(-boxWidth, 0, 0, 0, Math.PI / 2); // Left
-        createWall(boxWidth, 0, 0, 0, -Math.PI / 2); // Right
+        // Initialize boundaries for the first time
+        updatePhysicsBoundaries();
+
+        // Handle window resize for responsiveness
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            updatePhysicsBoundaries(); // Re-snap the physics walls to the new view size
+        });
 
         // --- Generate Dice Textures Dynamically ---
         function createDiceTexture(number) {
@@ -172,7 +206,6 @@
         ];
 
         // --- Create Dice ---
-        const diceSize = 1.2;
         const geometry = new THREE.BoxGeometry(diceSize, diceSize, diceSize);
         const diceMeshes = [];
         const diceBodies = [];
@@ -237,3 +270,6 @@
     </script>
 </body>
 </html>
+
+
+```
